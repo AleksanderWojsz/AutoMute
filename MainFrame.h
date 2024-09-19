@@ -4,12 +4,20 @@
 
 class MuteFrame {
 public:
+	MuteFrame();
+	MuteFrame(int start_year, int start_month, int start_day, int start_hour, int start_minute, int end_year, int end_month, int end_day, int end_hour, int end_minute, bool repeat_every_week);
 	std::string to_string();
 	bool does_overlap_with_current_time();
-private:
+
+//private:
+	int id;
+	int start_year;
+	int start_month;
 	int start_day;
 	int start_hour;
 	int start_minute;
+	int end_year;
+	int end_month;
 	int end_day;
 	int end_hour;
 	int end_minute;
@@ -29,8 +37,11 @@ private:
 	wxSpinCtrl* end_minute;
 	wxCheckBox* repeat_every_week;
 	wxButton* add_button;
+	wxListBox* frame_list;
 
 
 	void OnAddButtonClicked(wxCommandEvent& event);
+	void load_and_display_frames();
+	void manage_frames();
 };
 

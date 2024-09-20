@@ -40,12 +40,10 @@ void MainFrame::manage_frames_in_thread() {
 	thread_event = std::thread([this]() {
 		std::unique_lock<std::mutex> lock(mtx);
 		while (terminate_thread == false) {
-			//std::cout << "-> thread managing frames" << std::endl;
 			int seconds_to_the_next_event = manage_frames(); // check frames
 
 			if (seconds_to_the_next_event > 0) {
 				// wait_for releases the lock while waiting
-				//std::cout << "-> thread sleeping for " << seconds_to_the_next_event << std::endl;
 				cv.wait_for(lock, std::chrono::seconds(seconds_to_the_next_event), [this] { return terminate_thread; });
 				// lock is acquired again
 			}
@@ -67,7 +65,7 @@ std::vector<std::string> get_next_week_days_with_dates() {
 	int current_day = (now->tm_wday + 6) % 7;
 
 		std::tm future_day = *now;
-	for (int i = 0; i < 7; ++i) {
+	for (int i = 0; i < 7; i++) {
 		std::mktime(&future_day);
 
 		std::ostringstream oss;
@@ -82,6 +80,14 @@ std::vector<std::string> get_next_week_days_with_dates() {
 	}
 
 	return days_with_dates;
+}
+
+// <hours, minutes>
+std::pair<int, int> get_current_hour_and_minutes() {
+	std::time_t current_time = std::time(nullptr);
+	std::tm* now = std::localtime(&current_time);
+
+	return std::make_pair(now->tm_hour, now->tm_min);
 }
 
 // [day, month, year]
@@ -141,7 +147,7 @@ void mute() {
 }
 
 void unmute() {
-	change_volume(0.2);
+	change_volume(0.2F); // F means float
 	std::cout << "unmuted" << std::endl;
 }
 
@@ -163,13 +169,17 @@ MainFrame::MainFrame(const wxString& title): wxFrame(nullptr, wxID_ANY, title) {
 	start_day = new wxRadioBox(panel, wxID_ANY, "Start day (If a day in the current week has already passed, it will be considered a day in the next week)", wxDefaultPosition, wxDefaultSize, daysChoice);
 	start_hour = new wxSpinCtrl(panel, wxID_ANY, "Start hour", wxDefaultPosition, wxDefaultSize, wxSP_WRAP);
 	start_hour->SetRange(0, 23);
+	start_hour->SetValue(get_current_hour_and_minutes().first);
 	start_minute = new wxSpinCtrl(panel, wxID_ANY, "Start minute", wxDefaultPosition, wxDefaultSize, wxSP_WRAP);
 	start_minute->SetRange(0, 59);
+	start_minute->SetValue(get_current_hour_and_minutes().second);
 	end_day = new wxRadioBox(panel, wxID_ANY, "End day (first such day after start day)", wxDefaultPosition, wxDefaultSize, daysChoice);
 	end_hour = new wxSpinCtrl(panel, wxID_ANY, "End hour", wxDefaultPosition, wxDefaultSize, wxSP_WRAP);
 	end_hour->SetRange(0, 23);
+	end_hour->SetValue(get_current_hour_and_minutes().first);
 	end_minute = new wxSpinCtrl(panel, wxID_ANY, "End minute", wxDefaultPosition, wxDefaultSize, wxSP_WRAP);
 	end_minute->SetRange(0, 59);
+	end_minute->SetValue(get_current_hour_and_minutes().second);
 	repeat_every_week = new wxCheckBox(panel, wxID_ANY, "Repeat every week", wxDefaultPosition, wxDefaultSize);
 	add_button = new wxButton(panel, wxID_ANY, "Add", wxDefaultPosition, wxDefaultSize);
 	add_button->Bind(wxEVT_BUTTON, &MainFrame::OnAddButtonClicked, this);
@@ -263,7 +273,7 @@ int MainFrame::manage_frames() {
 		end_time.tm_min = frame.end_minute;
 		std::time_t end_epoch = std::mktime(&end_time);
 
-		if (end_epoch > current_time) {
+		if (end_epoch > current_time || frame.repeat_every_week) { // weekly repeated frames are never outdated
 			updated_frames.push_back(frame);
 		}
 	}
@@ -335,8 +345,15 @@ std::pair<bool, int> is_any_frame_active(std::vector<MuteFrame> frames) {
 		end_tm.tm_sec = 0;
 		std::time_t end_time = std::mktime(&end_tm);
 
+		if (frame.repeat_every_week && now > end_time) {
+			// add a week worth of time enough times so it is current week
+			int weeks_to_add = (now - end_time) / (7 * 24 * 60 * 60) + 1;
+			start_time += weeks_to_add * (7 * 24 * 60 * 60);
+			end_time += weeks_to_add * (7 * 24 * 60 * 60);
+		}
+
 		// Is this frame active
-		if (now >= start_time && now <= end_time) {
+		if (now >= start_time && now < end_time) {
 			is_active = true;
 		}
 	
@@ -364,26 +381,45 @@ MuteFrame::MuteFrame(int start_year, int start_month, int start_day, int start_h
 
 std::string MuteFrame::to_string() {
 	std::ostringstream oss;
+
+	const char* days_of_week[] = { "Sun", "Mon", "Tues", "Wed", "Thurs", "Fri", "Sat" };
+
+	std::tm start_tm = {};
+	start_tm.tm_isdst = -1;
+	start_tm.tm_year = start_year - 1900;
+	start_tm.tm_mon = start_month - 1;
+	start_tm.tm_mday = start_day;
+	std::mktime(&start_tm);
+
+	std::tm end_tm = {};
+	end_tm.tm_isdst = -1;
+	end_tm.tm_year = end_year - 1900;
+	end_tm.tm_mon = end_month - 1;
+	end_tm.tm_mday = end_day;
+	std::mktime(&end_tm);
+
 	oss << "Start: " << start_year << "-"
 		<< (start_month < 10 ? "0" : "") << start_month << "-"
-		<< (start_day < 10 ? "0" : "") << start_day << " "
+		<< (start_day < 10 ? "0" : "") << start_day << " ("
+		<< days_of_week[start_tm.tm_wday] << ") "
 		<< start_hour << ":" << (start_minute < 10 ? "0" : "") << start_minute
 		<< "   -   "
 		<< "End: " << end_year << "-"
 		<< (end_month < 10 ? "0" : "") << end_month << "-"
-		<< (end_day < 10 ? "0" : "") << end_day << " "
+		<< (end_day < 10 ? "0" : "") << end_day << " ("
+		<< days_of_week[end_tm.tm_wday] << ") "
 		<< end_hour << ":" << (end_minute < 10 ? "0" : "") << end_minute
 		<< "   -   "
 		<< "Repeat every week: " << (repeat_every_week ? "Yes" : "No") << "   -   "
-		<< "Active: " << (does_overlap_with_current_time() ? "Yes" : "No");
+		<< "Active now: " << (does_overlap_with_current_time() ? "Yes" : "No");
 
 	return oss.str();
 }
 
 
 bool MuteFrame::does_overlap_with_current_time() {
-	std::time_t current_time = std::time(nullptr);
-	std::tm* now = std::localtime(&current_time);
+	std::time_t now = std::time(nullptr);
+	std::tm* current_time_tm = std::localtime(&now);
 
 	std::tm start_tm = {};
 	start_tm.tm_isdst = -1;
@@ -403,15 +439,18 @@ bool MuteFrame::does_overlap_with_current_time() {
 	end_tm.tm_min = end_minute;
 	end_tm.tm_sec = 0;
 
-	std::time_t start_time_t = std::mktime(&start_tm);
-	std::time_t end_time_t = std::mktime(&end_tm);
-	std::time_t current_time_t = std::mktime(now);
+	std::time_t start_time = std::mktime(&start_tm);
+	std::time_t end_time = std::mktime(&end_tm);
+	std::time_t current_time = std::mktime(current_time_tm);
 
-	if (current_time_t >= start_time_t && current_time_t < end_time_t) {
-		return true;
+	if (repeat_every_week && current_time > end_time) {
+		// add a week worth of time enough times so it is current week
+		int weeks_to_add = (current_time - end_time) / (7 * 24 * 60 * 60) + 1;
+		start_time += weeks_to_add * (7 * 24 * 60 * 60);
+		end_time += weeks_to_add * (7 * 24 * 60 * 60);
 	}
 
-	return false;
+	return (current_time >= start_time && current_time < end_time);
 }
 
 

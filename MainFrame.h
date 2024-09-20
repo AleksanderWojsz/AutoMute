@@ -1,6 +1,10 @@
 #pragma once
 #include <wx/wx.h>
 #include <wx/spinctrl.h>
+#include <thread>
+#include <condition_variable>
+#include <mutex>
+
 
 class MuteFrame {
 public:
@@ -39,9 +43,24 @@ private:
 	wxButton* add_button;
 	wxListBox* frame_list;
 
+	std::condition_variable cv;
+	std::mutex mtx;
+	std::thread thread_event;
+	bool terminate_thread = false;
+
 
 	void OnAddButtonClicked(wxCommandEvent& event);
+	void manage_frames_in_thread();
 	void load_and_display_frames();
-	void manage_frames();
+	int manage_frames();
+
+	~MainFrame() {
+		terminate_thread = true;
+		cv.notify_all();
+		if (thread_event.joinable()) {
+			thread_event.join();
+		}
+	}
+
 };
 

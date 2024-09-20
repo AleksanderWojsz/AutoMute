@@ -12,9 +12,46 @@
 #include <utility>
 #include <iomanip>
 #include <limits>
+#include <thread>
+#include <condition_variable>
+#include <mutex>
 
 void save_mute_frame(MuteFrame frame);
 std::pair<bool, int> is_any_frame_active(std::vector<MuteFrame> frames);
+
+void MainFrame::manage_frames_in_thread() {
+	if (thread_event.joinable()) {
+		{
+			std::unique_lock<std::mutex> lock(mtx); // unique lock is released at the end of the scope (also lock.unlock() can be called). 
+			terminate_thread = true;
+		}
+
+		cv.notify_all(); // makes a thread check the condition
+		thread_event.join();
+	}
+
+	terminate_thread = false;
+
+	// start new thread
+	thread_event = std::thread([this]() {
+		std::unique_lock<std::mutex> lock(mtx);
+		while (terminate_thread == false) {
+			std::cout << "-> thread managing frames" << std::endl;
+			int seconds_to_the_next_event = manage_frames(); // check frames
+
+			if (seconds_to_the_next_event > 0) {
+				// wait_for releases the lock while waiting
+				std::cout << "-> thread sleeping for " << seconds_to_the_next_event << std::endl;
+				cv.wait_for(lock, std::chrono::seconds(seconds_to_the_next_event), [this] { return terminate_thread; });
+				// lock is acquired again
+			}
+			else {
+				break;
+			}
+		}
+		lock.unlock();
+	});
+}
 
 std::vector<std::string> get_next_week_days_with_dates() {
 	const char* days[] = { "Mon", "Tues", "Wed", "Thurs", "Fri", "Sat", "Sun" };
@@ -113,7 +150,7 @@ MainFrame::MainFrame(const wxString& title): wxFrame(nullptr, wxID_ANY, title) {
 	panel->SetSizer(mainSizer);
 	mainSizer->SetSizeHints(this);
 
-	manage_frames();
+	manage_frames_in_thread();
 
 	CreateStatusBar();
 }  
@@ -140,14 +177,14 @@ void MainFrame::OnAddButtonClicked(wxCommandEvent& event) {
 
 	save_mute_frame(new_frame);
 
-	manage_frames();
+	manage_frames_in_thread();
 }
 
-
-
-void MainFrame::manage_frames() {
-	std::ifstream inFile("mute_frames.txt");
+// return seconds remaining to the next event
+int MainFrame::manage_frames() {
+	// read frames from the file
 	std::vector<MuteFrame> frames;
+	std::ifstream inFile("mute_frames.txt");
 
 	if (inFile.is_open()) {
 		MuteFrame frame;
@@ -163,24 +200,61 @@ void MainFrame::manage_frames() {
 	}
 	else {
 		wxLogStatus("Could not open the file");
-		return;
+		return -2;
 	}
 
-	frame_list->Clear();
+	// filter out outdated frames
+	std::time_t current_time = std::time(nullptr);
+	std::vector<MuteFrame> updated_frames;
 	for (MuteFrame frame : frames) {
+		std::tm end_time = { 0 };
+		end_time.tm_isdst = -1; // daylight saving time information
+		end_time.tm_year = frame.end_year - 1900;
+		end_time.tm_mon = frame.end_month - 1;
+		end_time.tm_mday = frame.end_day;
+		end_time.tm_hour = frame.end_hour;
+		end_time.tm_min = frame.end_minute;
+		std::time_t end_epoch = std::mktime(&end_time);
+
+		if (end_epoch > current_time) {
+			updated_frames.push_back(frame);
+		}
+	}
+
+	// Update the file with remaining frames
+	std::ofstream outFile("mute_frames.txt");
+	if (outFile.is_open()) {
+		for (const auto& frame : updated_frames) {
+			outFile << frame.id << ' '
+				<< frame.start_year << ' ' << frame.start_month << ' ' << frame.start_day << ' '
+				<< frame.start_hour << ' ' << frame.start_minute << ' '
+				<< frame.end_year << ' ' << frame.end_month << ' ' << frame.end_day << ' '
+				<< frame.end_hour << ' ' << frame.end_minute << ' '
+				<< frame.repeat_every_week << '\n';
+		}
+		outFile.close();
+	}
+	else {
+		wxLogStatus("Could not open the file");
+		return -2;
+	}
+
+	// Update the frame_list
+	frame_list->Clear();
+	for (MuteFrame frame : updated_frames) {
 		frame_list->Append(frame.to_string());
 	}
 
-	std::pair<bool, int> result = is_any_frame_active(frames);
+	// Check if any frame is active
+	std::pair<bool, int> result = is_any_frame_active(updated_frames);
 	if (result.first) {
-		std::cout << "Active frame for " << result.second << " seconds." << " " << result.second / 60 << std::endl;
+		std::cout << "Mute" << std::endl;
+	} else {
+		std::cout << "Unmute" << std::endl;
 	}
-	else if (result.second != -1) {
-		std::cout << "No active frame. First one will be active in " << result.second << " seconds." << " " << result.second / 60 << std::endl;
-	}
-	else {
-		std::cout << "No active or upcoming frame found." << std::endl;
-	}
+	std::cout << "Next event in " << result.second << " seconds. (" << result.second / 60 << " minutes)" << std::endl;
+
+	return result.second;
 }
 
 // <is any frame active now, seconds to wait until next event from any frame (either start or end of a frame) (-1 if no frames)>

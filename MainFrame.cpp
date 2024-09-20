@@ -15,6 +15,10 @@
 #include <thread>
 #include <condition_variable>
 #include <mutex>
+#include <endpointvolume.h>
+#include <Windows.h>
+#include <Mmdeviceapi.h>
+#include <Endpointvolume.h>
 
 void save_mute_frame(MuteFrame frame);
 std::pair<bool, int> is_any_frame_active(std::vector<MuteFrame> frames);
@@ -36,12 +40,12 @@ void MainFrame::manage_frames_in_thread() {
 	thread_event = std::thread([this]() {
 		std::unique_lock<std::mutex> lock(mtx);
 		while (terminate_thread == false) {
-			std::cout << "-> thread managing frames" << std::endl;
+			//std::cout << "-> thread managing frames" << std::endl;
 			int seconds_to_the_next_event = manage_frames(); // check frames
 
 			if (seconds_to_the_next_event > 0) {
 				// wait_for releases the lock while waiting
-				std::cout << "-> thread sleeping for " << seconds_to_the_next_event << std::endl;
+				//std::cout << "-> thread sleeping for " << seconds_to_the_next_event << std::endl;
 				cv.wait_for(lock, std::chrono::seconds(seconds_to_the_next_event), [this] { return terminate_thread; });
 				// lock is acquired again
 			}
@@ -96,6 +100,49 @@ std::vector<int> parse_date(std::string date_string) {
 	}
 
 	return date_parts;
+}
+
+// https://stackoverflow.com/a/48838523/22553511
+BOOL change_volume(float nVolume)
+{
+	CoInitialize(NULL);
+	HRESULT hr = NULL;
+	IMMDeviceEnumerator* deviceEnumerator = NULL;
+	hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), NULL, CLSCTX_INPROC_SERVER, __uuidof(IMMDeviceEnumerator), (LPVOID*)&deviceEnumerator);
+	if (FAILED(hr)) {
+		return FALSE;
+	}
+
+	IMMDevice* defaultDevice = NULL;
+	hr = deviceEnumerator->GetDefaultAudioEndpoint(eRender, eConsole, &defaultDevice);
+	deviceEnumerator->Release();
+	if (FAILED(hr)) {
+		return FALSE;
+	}
+
+	IAudioEndpointVolume* endpointVolume = NULL;
+	hr = defaultDevice->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_INPROC_SERVER, NULL, (LPVOID*)&endpointVolume);
+	defaultDevice->Release();
+	if (FAILED(hr)) {
+		return FALSE;
+	}
+
+	hr = endpointVolume->SetMasterVolumeLevelScalar(nVolume, NULL);
+	endpointVolume->Release();
+
+	CoUninitialize();
+	return SUCCEEDED(hr);
+}
+
+
+void mute() {
+	change_volume(0);
+	std::cout << "muted" << std::endl;
+}
+
+void unmute() {
+	change_volume(0.2);
+	std::cout << "unmuted" << std::endl;
 }
 
 MainFrame::MainFrame(const wxString& title): wxFrame(nullptr, wxID_ANY, title) {
@@ -248,9 +295,9 @@ int MainFrame::manage_frames() {
 	// Check if any frame is active
 	std::pair<bool, int> result = is_any_frame_active(updated_frames);
 	if (result.first) {
-		std::cout << "Mute" << std::endl;
+		mute();
 	} else {
-		std::cout << "Unmute" << std::endl;
+		unmute();
 	}
 	std::cout << "Next event in " << result.second << " seconds. (" << result.second / 60 << " minutes)" << std::endl;
 

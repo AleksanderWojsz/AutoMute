@@ -4,7 +4,12 @@
 #include <thread>
 #include <condition_variable>
 #include <mutex>
+#include <wx/taskbar.h>
+#include <wx/menu.h>
 
+class TaskBarIcon;
+class MuteFrame;
+class MainFrame;
 
 class MuteFrame {
 public:
@@ -31,6 +36,7 @@ public:
 class MainFrame : public wxFrame {
 public:
 	MainFrame(const wxString& title);
+	void OnMenuEvent(wxCommandEvent& event);
 
 private:
 	wxRadioBox* start_day;
@@ -42,6 +48,7 @@ private:
 	wxCheckBox* repeat_every_week;
 	wxButton* add_button;
 	wxListBox* frame_list;
+	TaskBarIcon* task_bar_icon;
 
 	std::condition_variable cv;
 	std::mutex mtx;
@@ -51,16 +58,21 @@ private:
 
 	void OnAddButtonClicked(wxCommandEvent& event);
 	void manage_frames_in_thread();
-	void load_and_display_frames();
 	int manage_frames();
+	~MainFrame();
+	void OnClose(wxCloseEvent& event);
 
-	~MainFrame() {
-		terminate_thread = true;
-		cv.notify_all();
-		if (thread_event.joinable()) {
-			thread_event.join();
-		}
-	}
+};
 
+
+
+class TaskBarIcon : public wxTaskBarIcon {
+public:
+	TaskBarIcon(MainFrame* parentFrame);
+	void left_button_click(wxTaskBarIconEvent&);
+	void right_button_click(wxTaskBarIconEvent&);
+
+private:
+	MainFrame* main_frame;
 };
 

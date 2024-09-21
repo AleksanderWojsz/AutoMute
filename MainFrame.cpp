@@ -20,6 +20,8 @@
 #include <Mmdeviceapi.h>
 #include <Endpointvolume.h>
 
+#define MENU_EXIT_OPTION_ID 100
+
 void save_mute_frame(MuteFrame frame);
 std::pair<bool, int> is_any_frame_active(std::vector<MuteFrame> frames);
 
@@ -108,7 +110,7 @@ std::vector<int> parse_date(std::string date_string) {
 	return date_parts;
 }
 
-// https://stackoverflow.com/a/48838523/22553511
+// code from https://stackoverflow.com/a/48838523/22553511
 BOOL change_volume(float nVolume)
 {
 	CoInitialize(NULL);
@@ -147,11 +149,16 @@ void mute() {
 }
 
 void unmute() {
-	change_volume(0.2F); // F means float
+	change_volume(0.2F); // F - float
 	std::cout << "unmuted" << std::endl;
 }
 
 MainFrame::MainFrame(const wxString& title): wxFrame(nullptr, wxID_ANY, title) {
+
+	task_bar_icon = new TaskBarIcon(this);
+	Bind(wxEVT_CLOSE_WINDOW, &MainFrame::OnClose, this);
+
+	SetIcon(wxIcon(wxT("icon.ico"), wxBITMAP_TYPE_ICO));
 
 	// TODO allows to use cout to output to console
 	AllocConsole();
@@ -208,7 +215,6 @@ MainFrame::MainFrame(const wxString& title): wxFrame(nullptr, wxID_ANY, title) {
 	mainSizer->SetSizeHints(this);
 
 	manage_frames_in_thread();
-
 	CreateStatusBar();
 }  
 
@@ -481,3 +487,48 @@ void save_mute_frame(MuteFrame frame) {
 	}
 }
 
+MainFrame::~MainFrame() {
+	terminate_thread = true;
+	cv.notify_all();
+	if (thread_event.joinable()) {
+		thread_event.join();
+	}
+
+	if (task_bar_icon) {
+		task_bar_icon->RemoveIcon();
+		delete task_bar_icon;
+	}
+}
+
+void MainFrame::OnClose(wxCloseEvent& event) {
+	Hide();
+	event.Veto();  // "Call this from your event handler to veto a system shutdown"
+}
+
+
+void MainFrame::OnMenuEvent(wxCommandEvent& event) {
+	if (event.GetId() == MENU_EXIT_OPTION_ID) {
+		Close();
+		Destroy();
+	}
+}
+
+TaskBarIcon::TaskBarIcon(MainFrame* parentFrame) : wxTaskBarIcon(), main_frame(parentFrame) {
+	SetIcon(wxIcon(wxT("icon.ico"), wxBITMAP_TYPE_ICO));
+	Bind(wxEVT_TASKBAR_LEFT_DOWN, &TaskBarIcon::left_button_click, this);
+	Bind(wxEVT_TASKBAR_RIGHT_DOWN, &TaskBarIcon::right_button_click, this);
+}
+
+void TaskBarIcon::left_button_click(wxTaskBarIconEvent&) {
+	if (main_frame->IsIconized()) { // if window is minimized
+		main_frame->Restore(); // unminimize it
+	}
+	main_frame->Show();
+}
+
+void TaskBarIcon::right_button_click(wxTaskBarIconEvent&) {
+	wxMenu menu;
+	menu.Append(MENU_EXIT_OPTION_ID, "Exit");
+	Bind(wxEVT_COMMAND_MENU_SELECTED, &MainFrame::OnMenuEvent, main_frame, MENU_EXIT_OPTION_ID);
+	PopupMenu(&menu);
+}

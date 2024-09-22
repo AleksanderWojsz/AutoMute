@@ -184,41 +184,52 @@ MainFrame::MainFrame(const wxString& title): wxFrame(nullptr, wxID_ANY, title) {
 		daysChoice.Add(day_with_date);
 	}
 
-	start_day = new wxRadioBox(panel, wxID_ANY, "Start day (If a day in the current week has already passed, it will be considered a day in the next week)", wxDefaultPosition, wxDefaultSize, daysChoice);
+	start_day = new wxRadioBox(panel, wxID_ANY, "Start day", wxDefaultPosition, wxDefaultSize, daysChoice);
+	wxStaticText* start_hour_label = new wxStaticText(panel, wxID_ANY, "Start hour:");
 	start_hour = new wxSpinCtrl(panel, wxID_ANY, "Start hour", wxDefaultPosition, wxDefaultSize, wxSP_WRAP);
 	start_hour->SetRange(0, 23);
 	start_hour->SetValue(get_current_hour_and_minutes().first);
+	wxStaticText* start_minute_label = new wxStaticText(panel, wxID_ANY, "Start minute:");
 	start_minute = new wxSpinCtrl(panel, wxID_ANY, "Start minute", wxDefaultPosition, wxDefaultSize, wxSP_WRAP);
 	start_minute->SetRange(0, 59);
 	start_minute->SetValue(get_current_hour_and_minutes().second);
-	end_day = new wxRadioBox(panel, wxID_ANY, "End day (first such day after start day)", wxDefaultPosition, wxDefaultSize, daysChoice);
+	end_day = new wxRadioBox(panel, wxID_ANY, "End day", wxDefaultPosition, wxDefaultSize, daysChoice);
+	wxStaticText* end_hour_label = new wxStaticText(panel, wxID_ANY, "End hour:");
 	end_hour = new wxSpinCtrl(panel, wxID_ANY, "End hour", wxDefaultPosition, wxDefaultSize, wxSP_WRAP);
 	end_hour->SetRange(0, 23);
 	end_hour->SetValue(get_current_hour_and_minutes().first);
+	wxStaticText* end_minute_label = new wxStaticText(panel, wxID_ANY, "End minute:");
 	end_minute = new wxSpinCtrl(panel, wxID_ANY, "End minute", wxDefaultPosition, wxDefaultSize, wxSP_WRAP);
 	end_minute->SetRange(0, 59);
 	end_minute->SetValue(get_current_hour_and_minutes().second);
 	repeat_every_week = new wxCheckBox(panel, wxID_ANY, "Repeat every week", wxDefaultPosition, wxDefaultSize);
 	add_button = new wxButton(panel, wxID_ANY, "Add", wxDefaultPosition, wxDefaultSize);
 	add_button->Bind(wxEVT_BUTTON, &MainFrame::OnAddButtonClicked, this);
-	frame_list = new wxListBox(panel, wxID_ANY, wxDefaultPosition, wxDefaultSize);
+	frame_list = new wxListBox(panel, wxID_ANY, wxDefaultPosition, wxSize(700, -1));
 	autostart_button = new wxButton(panel, wxID_ANY, "Start the application automatically at system startup", wxDefaultPosition, wxDefaultSize);
 	autostart_button->Bind(wxEVT_BUTTON, &MainFrame::autostart_button_clicked, this);
 	
+
 	wxBoxSizer* mainSizer = new wxBoxSizer(wxVERTICAL);
 	mainSizer->Add(start_day, wxSizerFlags().CenterHorizontal());
 	mainSizer->AddSpacer(10);
-	mainSizer->Add(start_hour, wxSizerFlags().CenterHorizontal());
+	mainSizer->Add(start_hour_label, wxSizerFlags().Center());
 	mainSizer->AddSpacer(10);
-	mainSizer->Add(start_minute, wxSizerFlags().CenterHorizontal());
+	mainSizer->Add(start_hour, wxSizerFlags().Center());
+	mainSizer->AddSpacer(10);
+	mainSizer->Add(start_minute_label, wxSizerFlags().Center());
+	mainSizer->AddSpacer(10);
+	mainSizer->Add(start_minute, wxSizerFlags().Center());
 	mainSizer->AddSpacer(30);
 	mainSizer->Add(end_day, wxSizerFlags().CenterHorizontal());
+	mainSizer->AddSpacer(20);
+	mainSizer->Add(end_hour_label, wxSizerFlags().Center());
 	mainSizer->AddSpacer(10);
-	mainSizer->Add(end_hour, wxSizerFlags().CenterHorizontal());
+	mainSizer->Add(end_hour, wxSizerFlags().Center());
 	mainSizer->AddSpacer(10);
-	mainSizer->Add(end_minute, wxSizerFlags().CenterHorizontal());
-	mainSizer->AddSpacer(30);
-	mainSizer->Add(repeat_every_week, wxSizerFlags().CenterHorizontal());
+	mainSizer->Add(end_minute_label, wxSizerFlags().Center());
+	mainSizer->AddSpacer(10);
+	mainSizer->Add(end_minute, wxSizerFlags().Center());
 	mainSizer->AddSpacer(30);
 	mainSizer->Add(add_button, wxSizerFlags().CenterHorizontal());
 	mainSizer->AddSpacer(30);
@@ -232,6 +243,15 @@ MainFrame::MainFrame(const wxString& title): wxFrame(nullptr, wxID_ANY, title) {
 	manage_frames_in_thread();
 	CreateStatusBar();
 }  
+
+
+void MainFrame::delete_frame(int line_no) {
+	
+	// delete line_no-th from the file
+
+	manage_frames_in_thread();
+}
+
 
 void MainFrame::OnAddButtonClicked(wxCommandEvent& event) {
 	std::vector<std::string> upcoming_days_with_dates = get_next_week_days_with_dates();
@@ -327,6 +347,7 @@ int MainFrame::manage_frames() {
 	for (MuteFrame frame : updated_frames) {
 		frame_list->Append(frame.to_string());
 	}
+
 
 	// Check if any frame is active
 	std::pair<bool, int> result = is_any_frame_active(updated_frames);

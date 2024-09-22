@@ -17,7 +17,7 @@ public:
 	MuteFrame(int start_year, int start_month, int start_day, int start_hour, int start_minute, int end_year, int end_month, int end_day, int end_hour, int end_minute, bool repeat_every_week);
 	std::string to_string();
 	bool does_overlap_with_current_time();
-
+	
 //private:
 	int id;
 	int start_year;
@@ -37,6 +37,7 @@ class MainFrame : public wxFrame {
 public:
 	MainFrame(const wxString& title);
 	void OnMenuEvent(wxCommandEvent& event);
+	void delete_frame(int line_no);
 
 private:
 	wxRadioBox* start_day;
@@ -48,6 +49,7 @@ private:
 	wxCheckBox* repeat_every_week;
 	wxButton* add_button;
 	wxListBox* frame_list;
+	wxButton* autostart_button;
 	TaskBarIcon* task_bar_icon;
 
 	std::condition_variable cv;
@@ -57,6 +59,7 @@ private:
 
 
 	void OnAddButtonClicked(wxCommandEvent& event);
+	void autostart_button_clicked(wxCommandEvent& event);
 	void manage_frames_in_thread();
 	int manage_frames();
 	~MainFrame();

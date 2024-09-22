@@ -15,10 +15,10 @@
 #include <thread>
 #include <condition_variable>
 #include <mutex>
-#include <endpointvolume.h>
 #include <Windows.h>
 #include <Mmdeviceapi.h>
-#include <Endpointvolume.h>
+#include <Audioclient.h>
+#include <endpointvolume.h>
 
 #define MENU_EXIT_OPTION_ID 100
 
@@ -143,14 +143,25 @@ BOOL change_volume(float nVolume)
 }
 
 
-void mute() {
-	change_volume(0);
-	std::cout << "muted" << std::endl;
-}
+// based on https://stackoverflow.com/q/75045102/22553511
+void set_mute(BOOL mute) {
+	CoInitialize(NULL);
 
-void unmute() {
-	change_volume(0.2F); // F - float
-	std::cout << "unmuted" << std::endl;
+	IMMDeviceEnumerator* DeviceEnumerator = nullptr;
+	IMMDevice* Device = nullptr;
+	IAudioEndpointVolume* AudioEndpointVolume = nullptr;
+
+	CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_INPROC_SERVER, __uuidof(IMMDeviceEnumerator), (LPVOID*)&DeviceEnumerator);
+	DeviceEnumerator->GetDefaultAudioEndpoint(eRender, eConsole, &Device);
+	Device->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_INPROC_SERVER, NULL, (LPVOID*)&AudioEndpointVolume);
+
+	AudioEndpointVolume->SetMute(mute, NULL);
+
+	AudioEndpointVolume->Release();
+	Device->Release();
+	DeviceEnumerator->Release();
+
+	CoUninitialize();
 }
 
 MainFrame::MainFrame(const wxString& title): wxFrame(nullptr, wxID_ANY, title) {
@@ -191,7 +202,9 @@ MainFrame::MainFrame(const wxString& title): wxFrame(nullptr, wxID_ANY, title) {
 	add_button = new wxButton(panel, wxID_ANY, "Add", wxDefaultPosition, wxDefaultSize);
 	add_button->Bind(wxEVT_BUTTON, &MainFrame::OnAddButtonClicked, this);
 	frame_list = new wxListBox(panel, wxID_ANY, wxDefaultPosition, wxDefaultSize);
-
+	autostart_button = new wxButton(panel, wxID_ANY, "Start the application automatically at system startup", wxDefaultPosition, wxDefaultSize);
+	autostart_button->Bind(wxEVT_BUTTON, &MainFrame::autostart_button_clicked, this);
+	
 	wxBoxSizer* mainSizer = new wxBoxSizer(wxVERTICAL);
 	mainSizer->Add(start_day, wxSizerFlags().CenterHorizontal());
 	mainSizer->AddSpacer(10);
@@ -210,6 +223,8 @@ MainFrame::MainFrame(const wxString& title): wxFrame(nullptr, wxID_ANY, title) {
 	mainSizer->Add(add_button, wxSizerFlags().CenterHorizontal());
 	mainSizer->AddSpacer(30);
 	mainSizer->Add(frame_list, wxSizerFlags().CenterHorizontal());
+	mainSizer->AddSpacer(30);
+	mainSizer->Add(autostart_button, wxSizerFlags().CenterHorizontal());
 
 	panel->SetSizer(mainSizer);
 	mainSizer->SetSizeHints(this);
@@ -241,6 +256,11 @@ void MainFrame::OnAddButtonClicked(wxCommandEvent& event) {
 	save_mute_frame(new_frame);
 
 	manage_frames_in_thread();
+}
+
+
+void MainFrame::autostart_button_clicked(wxCommandEvent& event) {
+	system("add_to_startup.bat");
 }
 
 // return seconds remaining to the next event
@@ -311,9 +331,9 @@ int MainFrame::manage_frames() {
 	// Check if any frame is active
 	std::pair<bool, int> result = is_any_frame_active(updated_frames);
 	if (result.first) {
-		mute();
+		set_mute(true);
 	} else {
-		unmute();
+		set_mute(false);
 	}
 	std::cout << "Next event in " << result.second << " seconds. (" << result.second / 60 << " minutes)" << std::endl;
 

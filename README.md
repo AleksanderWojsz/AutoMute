@@ -6,4 +6,6 @@
 
 - OS: Windows
 
-Screenshot: ![[automute.png]]
+Screenshot: 
+
+![app screenshot](automute.png)

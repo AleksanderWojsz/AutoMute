@@ -6,6 +6,12 @@
 
 - OS: Windows
 
+---
+ 
+[**Download installer**](https://github.com/AleksanderWojsz/AutoMute/releases/download/v1.0.0/AutoMuteInstaller.msi)
+
+---
+
 Screenshot: 
 
 ![app screenshot](automute.png)

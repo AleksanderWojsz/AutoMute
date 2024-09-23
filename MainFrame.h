@@ -16,9 +16,7 @@ public:
 	MuteFrame();
 	MuteFrame(int start_year, int start_month, int start_day, int start_hour, int start_minute, int end_year, int end_month, int end_day, int end_hour, int end_minute, bool repeat_every_week);
 	std::string to_string();
-	bool does_overlap_with_current_time();
-	
-//private:
+
 	int id;
 	int start_year;
 	int start_month;
@@ -31,6 +29,9 @@ public:
 	int end_hour;
 	int end_minute;
 	bool repeat_every_week;
+
+private:
+	bool does_overlap_with_current_time();
 };
 
 class MainFrame : public wxFrame {
@@ -58,15 +59,13 @@ private:
 	std::thread thread_event;
 	bool terminate_thread = false;
 
-
 	void OnAddButtonClicked(wxCommandEvent& event);
 	void autostart_button_clicked(wxCommandEvent& event);
 	void manage_frames_in_thread();
 	int manage_frames();
-	~MainFrame();
 	void OnClose(wxCloseEvent& event);
 	void OnDeleteButtonClicked(wxCommandEvent& event);
-
+	~MainFrame();
 };
 
 
@@ -74,10 +73,10 @@ private:
 class TaskBarIcon : public wxTaskBarIcon {
 public:
 	TaskBarIcon(MainFrame* parentFrame);
-	void left_button_click(wxTaskBarIconEvent&);
-	void right_button_click(wxTaskBarIconEvent&);
 
 private:
 	MainFrame* main_frame;
+	void left_button_click(wxTaskBarIconEvent&);
+	void right_button_click(wxTaskBarIconEvent&);
 };
 

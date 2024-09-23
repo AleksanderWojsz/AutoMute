@@ -23,40 +23,10 @@
 
 #define MENU_EXIT_OPTION_ID 100
 
-void save_mute_frame(MuteFrame frame);
+void save_mute_frames(std::vector<MuteFrame> frames, bool append);
 std::pair<bool, int> is_any_frame_active(std::vector<MuteFrame> frames);
-
-void MainFrame::manage_frames_in_thread() {
-	if (thread_event.joinable()) {
-		{
-			std::unique_lock<std::mutex> lock(mtx); // unique lock is released at the end of the scope (also lock.unlock() can be called). 
-			terminate_thread = true;
-		}
-
-		cv.notify_all(); // makes a thread check the condition
-		thread_event.join();
-	}
-
-	terminate_thread = false;
-
-	// start new thread
-	thread_event = std::thread([this]() {
-		std::unique_lock<std::mutex> lock(mtx);
-		while (terminate_thread == false) {
-			int seconds_to_the_next_event = manage_frames(); // check frames
-
-			if (seconds_to_the_next_event > 0) {
-				// wait_for releases the lock while waiting
-				cv.wait_for(lock, std::chrono::seconds(seconds_to_the_next_event), [this] { return terminate_thread; });
-				// lock is acquired again
-			}
-			else {
-				break;
-			}
-		}
-		lock.unlock();
-	});
-}
+void set_mute(BOOL mute);
+std::vector<MuteFrame> read_frames();
 
 std::vector<std::string> get_next_week_days_with_dates() {
 	const char* days[] = { "Mon", "Tues", "Wed", "Thurs", "Fri", "Sat", "Sun" };
@@ -67,7 +37,7 @@ std::vector<std::string> get_next_week_days_with_dates() {
 
 	int current_day = (now->tm_wday + 6) % 7;
 
-		std::tm future_day = *now;
+	std::tm future_day = *now;
 	for (int i = 0; i < 7; i++) {
 		std::mktime(&future_day);
 
@@ -111,61 +81,8 @@ std::vector<int> parse_date(std::string date_string) {
 	return date_parts;
 }
 
-// code from https://stackoverflow.com/a/48838523/22553511
-BOOL change_volume(float nVolume)
-{
-	CoInitialize(NULL);
-	HRESULT hr = NULL;
-	IMMDeviceEnumerator* deviceEnumerator = NULL;
-	hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), NULL, CLSCTX_INPROC_SERVER, __uuidof(IMMDeviceEnumerator), (LPVOID*)&deviceEnumerator);
-	if (FAILED(hr)) {
-		return FALSE;
-	}
 
-	IMMDevice* defaultDevice = NULL;
-	hr = deviceEnumerator->GetDefaultAudioEndpoint(eRender, eConsole, &defaultDevice);
-	deviceEnumerator->Release();
-	if (FAILED(hr)) {
-		return FALSE;
-	}
-
-	IAudioEndpointVolume* endpointVolume = NULL;
-	hr = defaultDevice->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_INPROC_SERVER, NULL, (LPVOID*)&endpointVolume);
-	defaultDevice->Release();
-	if (FAILED(hr)) {
-		return FALSE;
-	}
-
-	hr = endpointVolume->SetMasterVolumeLevelScalar(nVolume, NULL);
-	endpointVolume->Release();
-
-	CoUninitialize();
-	return SUCCEEDED(hr);
-}
-
-
-// based on https://stackoverflow.com/q/75045102/22553511
-void set_mute(BOOL mute) {
-	CoInitialize(NULL);
-
-	IMMDeviceEnumerator* DeviceEnumerator = nullptr;
-	IMMDevice* Device = nullptr;
-	IAudioEndpointVolume* AudioEndpointVolume = nullptr;
-
-	CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_INPROC_SERVER, __uuidof(IMMDeviceEnumerator), (LPVOID*)&DeviceEnumerator);
-	DeviceEnumerator->GetDefaultAudioEndpoint(eRender, eConsole, &Device);
-	Device->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_INPROC_SERVER, NULL, (LPVOID*)&AudioEndpointVolume);
-
-	AudioEndpointVolume->SetMute(mute, NULL);
-
-	AudioEndpointVolume->Release();
-	Device->Release();
-	DeviceEnumerator->Release();
-
-	CoUninitialize();
-}
-
-MainFrame::MainFrame(const wxString& title): wxFrame(nullptr, wxID_ANY, title) {
+MainFrame::MainFrame(const wxString& title) : wxFrame(nullptr, wxID_ANY, title) {
 
 	task_bar_icon = new TaskBarIcon(this);
 	Bind(wxEVT_CLOSE_WINDOW, &MainFrame::OnClose, this);
@@ -218,7 +135,7 @@ MainFrame::MainFrame(const wxString& title): wxFrame(nullptr, wxID_ANY, title) {
 	wxStaticLine* horizontal_line2 = new wxStaticLine(panel, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLI_VERTICAL);
 	autostart_button = new wxButton(panel, wxID_ANY, "Start the application automatically at system startup", wxDefaultPosition, wxDefaultSize);
 	autostart_button->Bind(wxEVT_BUTTON, &MainFrame::autostart_button_clicked, this);
-	
+
 
 	wxBoxSizer* mainSizer = new wxBoxSizer(wxVERTICAL);
 	mainSizer->AddSpacer(10);
@@ -260,7 +177,7 @@ MainFrame::MainFrame(const wxString& title): wxFrame(nullptr, wxID_ANY, title) {
 	mainSizer->SetSizeHints(this);
 
 	manage_frames_in_thread();
-}  
+}
 
 
 void MainFrame::OnDeleteButtonClicked(wxCommandEvent& event) {
@@ -275,39 +192,22 @@ void MainFrame::OnDeleteButtonClicked(wxCommandEvent& event) {
 }
 
 
-
 void MainFrame::delete_frame(int line_no) {
-	std::vector<MuteFrame> frames;
-	std::ifstream inFile("mute_frames.txt");
-	if (inFile.is_open()) {
-		MuteFrame frame;
-		while (inFile >> frame.id >> frame.start_year >> frame.start_month >> frame.start_day
-			>> frame.start_hour >> frame.start_minute >> frame.end_year
-			>> frame.end_month >> frame.end_day >> frame.end_hour
-			>> frame.end_minute >> frame.repeat_every_week) {
-			frames.push_back(frame);
-		}
-		inFile.close();
-	}
+	std::vector<MuteFrame> frames = read_frames();
 
 	if (line_no >= 0 && line_no < frames.size()) {
 		frames.erase(frames.begin() + line_no);
 	}
 
-	std::ofstream outFile("mute_frames.txt");
-	if (outFile.is_open()) {
-		for (const auto& frame : frames) {
-			outFile << frame.id << ' ' << frame.start_year << ' ' << frame.start_month << ' '
-				<< frame.start_day << ' ' << frame.start_hour << ' ' << frame.start_minute << ' '
-				<< frame.end_year << ' ' << frame.end_month << ' ' << frame.end_day << ' '
-				<< frame.end_hour << ' ' << frame.end_minute << ' ' << frame.repeat_every_week << '\n';
-		}
-		outFile.close();
-	}
+	save_mute_frames(frames, false);
 
 	wxLogStatus("");
 }
 
+
+void MainFrame::autostart_button_clicked(wxCommandEvent& event) {
+	system("add_to_startup.bat");
+}
 
 
 void MainFrame::OnAddButtonClicked(wxCommandEvent& event) {
@@ -324,8 +224,8 @@ void MainFrame::OnAddButtonClicked(wxCommandEvent& event) {
 	if (end_date < start_date ||
 		(start_date == end_date && end_hour_value < start_hour_value) ||
 		(start_date == end_date && start_hour_value == end_hour_value && end_minute_value <= start_minute_value)) {
-		
-			wxLogStatus("End date <= start date");
+
+		wxLogStatus("End date <= start date");
 		return;
 	}
 	else {
@@ -346,38 +246,47 @@ void MainFrame::OnAddButtonClicked(wxCommandEvent& event) {
 		repeat_every_week->IsChecked()
 	);
 
-	save_mute_frame(new_frame);
+	save_mute_frames({ new_frame }, true);
 	manage_frames_in_thread();
 }
 
 
+void MainFrame::manage_frames_in_thread() {
+	if (thread_event.joinable()) {
+		{
+			std::unique_lock<std::mutex> lock(mtx); // unique lock is released at the end of the scope (also lock.unlock() can be called). 
+			terminate_thread = true;
+		}
 
-void MainFrame::autostart_button_clicked(wxCommandEvent& event) {
-	system("add_to_startup.bat");
+		cv.notify_all(); // makes a thread check the condition
+		thread_event.join();
+	}
+
+	terminate_thread = false;
+
+	// start new thread
+	thread_event = std::thread([this]() {
+		std::unique_lock<std::mutex> lock(mtx);
+		while (terminate_thread == false) {
+			int seconds_to_the_next_event = manage_frames(); // check frames
+
+			if (seconds_to_the_next_event > 0) {
+				// wait_for releases the lock while waiting
+				cv.wait_for(lock, std::chrono::seconds(seconds_to_the_next_event), [this] { return terminate_thread; });
+				// lock is acquired again
+			}
+			else {
+				break;
+			}
+		}
+		lock.unlock();
+	});
 }
+
 
 // return seconds remaining to the next event
 int MainFrame::manage_frames() {
-	// read frames from the file
-	std::vector<MuteFrame> frames;
-	std::ifstream inFile("mute_frames.txt");
-
-	if (inFile.is_open()) {
-		MuteFrame frame;
-		while (inFile >> frame.id
-			>> frame.start_year >> frame.start_month >> frame.start_day
-			>> frame.start_hour >> frame.start_minute
-			>> frame.end_year >> frame.end_month >> frame.end_day
-			>> frame.end_hour >> frame.end_minute
-			>> frame.repeat_every_week) {
-			frames.push_back(frame);
-		}
-		inFile.close();
-	}
-	else {
-		wxLogStatus("Could not open the file");
-		return -2;
-	}
+	std::vector<MuteFrame> frames = read_frames();
 
 	// filter out outdated frames
 	std::time_t current_time = std::time(nullptr);
@@ -397,42 +306,29 @@ int MainFrame::manage_frames() {
 		}
 	}
 
-	// Update the file with remaining frames
-	std::ofstream outFile("mute_frames.txt");
-	if (outFile.is_open()) {
-		for (const auto& frame : updated_frames) {
-			outFile << frame.id << ' '
-				<< frame.start_year << ' ' << frame.start_month << ' ' << frame.start_day << ' '
-				<< frame.start_hour << ' ' << frame.start_minute << ' '
-				<< frame.end_year << ' ' << frame.end_month << ' ' << frame.end_day << ' '
-				<< frame.end_hour << ' ' << frame.end_minute << ' '
-				<< frame.repeat_every_week << '\n';
-		}
-		outFile.close();
-	}
-	else {
-		wxLogStatus("Could not open the file");
-		return -2;
-	}
+	// update the file with remaining frames
+	save_mute_frames(updated_frames, false);
 
-	// Update the frame_list
+	// update the frame_list
 	frame_list->Clear();
 	for (MuteFrame frame : updated_frames) {
 		frame_list->Append(frame.to_string());
 	}
 
 
-	// Check if any frame is active
+	// check if any frame is active
 	std::pair<bool, int> result = is_any_frame_active(updated_frames);
 	if (result.first) {
 		set_mute(true);
-	} else {
+	}
+	else {
 		set_mute(false);
 	}
 	std::cout << "Next event in " << result.second << " seconds. (" << result.second / 60 << " minutes)" << std::endl;
 
 	return result.second;
 }
+
 
 // <is any frame active now, seconds to wait until next event from any frame (either start or end of a frame) (-1 if no frames)>
 std::pair<bool, int> is_any_frame_active(std::vector<MuteFrame> frames) {
@@ -476,7 +372,7 @@ std::pair<bool, int> is_any_frame_active(std::vector<MuteFrame> frames) {
 		if (now >= start_time && now < end_time) {
 			is_active = true;
 		}
-	
+
 		// find time to the closes event
 		if (start_time > now) {
 			min_seconds_to_event = std::min(min_seconds_to_event, int(start_time - now));
@@ -490,14 +386,27 @@ std::pair<bool, int> is_any_frame_active(std::vector<MuteFrame> frames) {
 }
 
 
+// based on https://stackoverflow.com/q/75045102/22553511
+void set_mute(BOOL mute) {
+	CoInitialize(NULL);
 
-MuteFrame::MuteFrame()
-	: id(0), start_year(0), start_month(0), start_day(0), start_hour(0), start_minute(0), end_year(0), end_month(0), end_day(0), end_hour(0), end_minute(0), repeat_every_week(false) {
+	IMMDeviceEnumerator* DeviceEnumerator = nullptr;
+	IMMDevice* Device = nullptr;
+	IAudioEndpointVolume* AudioEndpointVolume = nullptr;
+
+	CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_INPROC_SERVER, __uuidof(IMMDeviceEnumerator), (LPVOID*)&DeviceEnumerator);
+	DeviceEnumerator->GetDefaultAudioEndpoint(eRender, eConsole, &Device);
+	Device->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_INPROC_SERVER, NULL, (LPVOID*)&AudioEndpointVolume);
+
+	AudioEndpointVolume->SetMute(mute, NULL);
+
+	AudioEndpointVolume->Release();
+	Device->Release();
+	DeviceEnumerator->Release();
+
+	CoUninitialize();
 }
 
-MuteFrame::MuteFrame(int start_year, int start_month, int start_day, int start_hour, int start_minute, int end_year, int end_month, int end_day, int end_hour, int end_minute, bool repeat_every_week)
-	: start_year(start_year), start_month(start_month), start_day(start_day), start_hour(start_hour), start_minute(start_minute), end_year(end_year), end_month(end_month), end_day(end_day), end_hour(end_hour), end_minute(end_minute), repeat_every_week(repeat_every_week) {
-}
 
 std::string MuteFrame::to_string() {
 	std::ostringstream oss;
@@ -573,32 +482,84 @@ bool MuteFrame::does_overlap_with_current_time() {
 	return (current_time >= start_time && current_time < end_time);
 }
 
+std::vector<MuteFrame> read_frames() {
+	std::vector<MuteFrame> frames;
+	std::ifstream inFile("mute_frames.txt");
 
-
-void save_mute_frame(MuteFrame frame) {
-	frame.id = 1;
-
-	// write new frame to the file
-	std::ofstream outFile("mute_frames.txt", std::ios::app); // Append mode
-	if (outFile.is_open()) {
-		outFile << frame.id << " "
-			<< frame.start_year << " "
-			<< frame.start_month << " "
-			<< frame.start_day << " "
-			<< frame.start_hour << " "
-			<< frame.start_minute << " "
-			<< frame.end_year << " "
-			<< frame.end_month << " "
-			<< frame.end_day << " "
-			<< frame.end_hour << " "
-			<< frame.end_minute << " "
-			<< frame.repeat_every_week << "\n";
-
-		outFile.close();
+	if (inFile.is_open()) {
+		MuteFrame frame;
+		while (inFile >> frame.id
+			>> frame.start_year >> frame.start_month >> frame.start_day
+			>> frame.start_hour >> frame.start_minute
+			>> frame.end_year >> frame.end_month >> frame.end_day
+			>> frame.end_hour >> frame.end_minute
+			>> frame.repeat_every_week) {
+			frames.push_back(frame);
+		}
+		inFile.close();
 	}
 	else {
 		wxLogStatus("Could not open the file");
 	}
+
+	return frames;
+}
+
+void save_mute_frames(std::vector<MuteFrame> frames, bool append) {
+
+	// write new frame to the file
+	std::ofstream outFile;
+	if (append) {
+		outFile.open("mute_frames.txt", std::ios::app);
+	}
+	else {
+		outFile.open("mute_frames.txt");
+	}
+
+	if (outFile.is_open()) {
+
+		for (MuteFrame frame : frames) {
+			outFile << frame.id << " "
+				<< frame.start_year << " "
+				<< frame.start_month << " "
+				<< frame.start_day << " "
+				<< frame.start_hour << " "
+				<< frame.start_minute << " "
+				<< frame.end_year << " "
+				<< frame.end_month << " "
+				<< frame.end_day << " "
+				<< frame.end_hour << " "
+				<< frame.end_minute << " "
+				<< frame.repeat_every_week << "\n";
+		}
+
+		outFile.close();
+	} else {
+		wxLogStatus("Could not open the file");
+	}
+}
+
+
+void MainFrame::OnClose(wxCloseEvent& event) {
+	Hide();
+	event.Veto(); // "Call this from your event handler to veto a system shutdown"
+}
+
+
+void MainFrame::OnMenuEvent(wxCommandEvent& event) {
+	if (event.GetId() == MENU_EXIT_OPTION_ID) {
+		Close();
+		Destroy();
+	}
+}
+
+
+MuteFrame::MuteFrame()
+	: id(0), start_year(0), start_month(0), start_day(0), start_hour(0), start_minute(0), end_year(0), end_month(0), end_day(0), end_hour(0), end_minute(0), repeat_every_week(false) {
+}
+
+MuteFrame::MuteFrame(int start_year, int start_month, int start_day, int start_hour, int start_minute, int end_year, int end_month, int end_day, int end_hour, int end_minute, bool repeat_every_week)
+	: start_year(start_year), start_month(start_month), start_day(start_day), start_hour(start_hour), start_minute(start_minute), end_year(end_year), end_month(end_month), end_day(end_day), end_hour(end_hour), end_minute(end_minute), repeat_every_week(repeat_every_week) {
 }
 
 MainFrame::~MainFrame() {
@@ -614,18 +575,6 @@ MainFrame::~MainFrame() {
 	}
 }
 
-void MainFrame::OnClose(wxCloseEvent& event) {
-	Hide();
-	event.Veto(); // "Call this from your event handler to veto a system shutdown"
-}
-
-
-void MainFrame::OnMenuEvent(wxCommandEvent& event) {
-	if (event.GetId() == MENU_EXIT_OPTION_ID) {
-		Close();
-		Destroy();
-	}
-}
 
 TaskBarIcon::TaskBarIcon(MainFrame* parentFrame) : wxTaskBarIcon(), main_frame(parentFrame) {
 	SetIcon(wxIcon(wxT("icon.ico"), wxBITMAP_TYPE_ICO));

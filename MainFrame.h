@@ -49,6 +49,7 @@ private:
 	wxCheckBox* repeat_every_week;
 	wxButton* add_button;
 	wxListBox* frame_list;
+	wxButton* delete_button;
 	wxButton* autostart_button;
 	TaskBarIcon* task_bar_icon;
 
@@ -64,6 +65,7 @@ private:
 	int manage_frames();
 	~MainFrame();
 	void OnClose(wxCloseEvent& event);
+	void OnDeleteButtonClicked(wxCommandEvent& event);
 
 };
 

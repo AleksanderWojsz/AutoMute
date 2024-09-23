@@ -19,6 +19,7 @@
 #include <Mmdeviceapi.h>
 #include <Audioclient.h>
 #include <endpointvolume.h>
+#include <wx/statline.h>
 
 #define MENU_EXIT_OPTION_ID 100
 
@@ -176,6 +177,9 @@ MainFrame::MainFrame(const wxString& title): wxFrame(nullptr, wxID_ANY, title) {
 	freopen("CONOUT$", "w", stdout);
 	freopen("CONOUT$", "w", stderr);
 
+	wxFont calibriFont(10, wxFONTFAMILY_SWISS, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL, false, wxT("Arial"));
+	this->SetFont(calibriFont);
+
 	wxPanel* panel = new wxPanel(this);
 
 	wxArrayString daysChoice;
@@ -184,7 +188,7 @@ MainFrame::MainFrame(const wxString& title): wxFrame(nullptr, wxID_ANY, title) {
 		daysChoice.Add(day_with_date);
 	}
 
-	start_day = new wxRadioBox(panel, wxID_ANY, "Start day", wxDefaultPosition, wxDefaultSize, daysChoice);
+	start_day = new wxRadioBox(panel, wxID_ANY, "Mute start day", wxDefaultPosition, wxDefaultSize, daysChoice);
 	wxStaticText* start_hour_label = new wxStaticText(panel, wxID_ANY, "Start hour:");
 	start_hour = new wxSpinCtrl(panel, wxID_ANY, "Start hour", wxDefaultPosition, wxDefaultSize, wxSP_WRAP);
 	start_hour->SetRange(0, 23);
@@ -193,7 +197,7 @@ MainFrame::MainFrame(const wxString& title): wxFrame(nullptr, wxID_ANY, title) {
 	start_minute = new wxSpinCtrl(panel, wxID_ANY, "Start minute", wxDefaultPosition, wxDefaultSize, wxSP_WRAP);
 	start_minute->SetRange(0, 59);
 	start_minute->SetValue(get_current_hour_and_minutes().second);
-	end_day = new wxRadioBox(panel, wxID_ANY, "End day", wxDefaultPosition, wxDefaultSize, daysChoice);
+	end_day = new wxRadioBox(panel, wxID_ANY, "Mute end day", wxDefaultPosition, wxDefaultSize, daysChoice);
 	wxStaticText* end_hour_label = new wxStaticText(panel, wxID_ANY, "End hour:");
 	end_hour = new wxSpinCtrl(panel, wxID_ANY, "End hour", wxDefaultPosition, wxDefaultSize, wxSP_WRAP);
 	end_hour->SetRange(0, 23);
@@ -205,12 +209,19 @@ MainFrame::MainFrame(const wxString& title): wxFrame(nullptr, wxID_ANY, title) {
 	repeat_every_week = new wxCheckBox(panel, wxID_ANY, "Repeat every week", wxDefaultPosition, wxDefaultSize);
 	add_button = new wxButton(panel, wxID_ANY, "Add", wxDefaultPosition, wxDefaultSize);
 	add_button->Bind(wxEVT_BUTTON, &MainFrame::OnAddButtonClicked, this);
+	add_button->SetBackgroundColour(wxColour(0xA4, 0xD0, 0xA6));
+	wxStaticLine* horizontal_line1 = new wxStaticLine(panel, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLI_VERTICAL);
 	frame_list = new wxListBox(panel, wxID_ANY, wxDefaultPosition, wxSize(700, -1));
+	delete_button = new wxButton(panel, wxID_ANY, "Delete", wxDefaultPosition, wxDefaultSize);
+	delete_button->Bind(wxEVT_BUTTON, &MainFrame::OnDeleteButtonClicked, this);
+	delete_button->SetBackgroundColour(wxColour(0xD9, 0x9F, 0xA0));
+	wxStaticLine* horizontal_line2 = new wxStaticLine(panel, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLI_VERTICAL);
 	autostart_button = new wxButton(panel, wxID_ANY, "Start the application automatically at system startup", wxDefaultPosition, wxDefaultSize);
 	autostart_button->Bind(wxEVT_BUTTON, &MainFrame::autostart_button_clicked, this);
 	
 
 	wxBoxSizer* mainSizer = new wxBoxSizer(wxVERTICAL);
+	mainSizer->AddSpacer(10);
 	mainSizer->Add(start_day, wxSizerFlags().CenterHorizontal());
 	mainSizer->AddSpacer(10);
 	mainSizer->Add(start_hour_label, wxSizerFlags().Center());
@@ -230,27 +241,73 @@ MainFrame::MainFrame(const wxString& title): wxFrame(nullptr, wxID_ANY, title) {
 	mainSizer->Add(end_minute_label, wxSizerFlags().Center());
 	mainSizer->AddSpacer(10);
 	mainSizer->Add(end_minute, wxSizerFlags().Center());
-	mainSizer->AddSpacer(30);
+	mainSizer->AddSpacer(20);
+	mainSizer->Add(repeat_every_week, wxSizerFlags().Center());
+	mainSizer->AddSpacer(10);
 	mainSizer->Add(add_button, wxSizerFlags().CenterHorizontal());
+	mainSizer->Add(horizontal_line1, 0, wxEXPAND | wxALL, 10);
 	mainSizer->AddSpacer(30);
 	mainSizer->Add(frame_list, wxSizerFlags().CenterHorizontal());
-	mainSizer->AddSpacer(30);
+	mainSizer->AddSpacer(5);
+	mainSizer->Add(delete_button, wxSizerFlags().CenterHorizontal());
+	mainSizer->AddSpacer(20);
+	mainSizer->Add(horizontal_line2, 0, wxEXPAND | wxALL, 10);
 	mainSizer->Add(autostart_button, wxSizerFlags().CenterHorizontal());
+	mainSizer->AddSpacer(30);
+	CreateStatusBar();
 
 	panel->SetSizer(mainSizer);
 	mainSizer->SetSizeHints(this);
 
 	manage_frames_in_thread();
-	CreateStatusBar();
 }  
 
 
-void MainFrame::delete_frame(int line_no) {
-	
-	// delete line_no-th from the file
-
-	manage_frames_in_thread();
+void MainFrame::OnDeleteButtonClicked(wxCommandEvent& event) {
+	int selected_line = frame_list->GetSelection();
+	if (selected_line != wxNOT_FOUND) {
+		delete_frame(selected_line);
+		manage_frames_in_thread();
+	}
+	else {
+		wxLogStatus("Select a line to delete.");
+	}
 }
+
+
+
+void MainFrame::delete_frame(int line_no) {
+	std::vector<MuteFrame> frames;
+	std::ifstream inFile("mute_frames.txt");
+	if (inFile.is_open()) {
+		MuteFrame frame;
+		while (inFile >> frame.id >> frame.start_year >> frame.start_month >> frame.start_day
+			>> frame.start_hour >> frame.start_minute >> frame.end_year
+			>> frame.end_month >> frame.end_day >> frame.end_hour
+			>> frame.end_minute >> frame.repeat_every_week) {
+			frames.push_back(frame);
+		}
+		inFile.close();
+	}
+
+	if (line_no >= 0 && line_no < frames.size()) {
+		frames.erase(frames.begin() + line_no);
+	}
+
+	std::ofstream outFile("mute_frames.txt");
+	if (outFile.is_open()) {
+		for (const auto& frame : frames) {
+			outFile << frame.id << ' ' << frame.start_year << ' ' << frame.start_month << ' '
+				<< frame.start_day << ' ' << frame.start_hour << ' ' << frame.start_minute << ' '
+				<< frame.end_year << ' ' << frame.end_month << ' ' << frame.end_day << ' '
+				<< frame.end_hour << ' ' << frame.end_minute << ' ' << frame.repeat_every_week << '\n';
+		}
+		outFile.close();
+	}
+
+	wxLogStatus("");
+}
+
 
 
 void MainFrame::OnAddButtonClicked(wxCommandEvent& event) {
@@ -259,24 +316,40 @@ void MainFrame::OnAddButtonClicked(wxCommandEvent& event) {
 	std::vector<int> start_date = parse_date(upcoming_days_with_dates[start_day->GetSelection()]);
 	std::vector<int> end_date = parse_date(upcoming_days_with_dates[end_day->GetSelection()]);
 
+	int start_hour_value = start_hour->GetValue();
+	int start_minute_value = start_minute->GetValue();
+	int end_hour_value = end_hour->GetValue();
+	int end_minute_value = end_minute->GetValue();
+
+	if (end_date < start_date ||
+		(start_date == end_date && end_hour_value < start_hour_value) ||
+		(start_date == end_date && start_hour_value == end_hour_value && end_minute_value <= start_minute_value)) {
+		
+			wxLogStatus("End date <= start date");
+		return;
+	}
+	else {
+		wxLogStatus("");
+	}
+
 	MuteFrame new_frame(
 		start_date[2],
 		start_date[1],
 		start_date[0],
-		start_hour->GetValue(), 
-		start_minute->GetValue(),
+		start_hour_value,
+		start_minute_value,
 		end_date[2],
 		end_date[1],
 		end_date[0],
-		end_hour->GetValue(),
-		end_minute->GetValue(),
+		end_hour_value,
+		end_minute_value,
 		repeat_every_week->IsChecked()
 	);
 
 	save_mute_frame(new_frame);
-
 	manage_frames_in_thread();
 }
+
 
 
 void MainFrame::autostart_button_clicked(wxCommandEvent& event) {

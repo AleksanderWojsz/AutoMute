@@ -89,11 +89,6 @@ MainFrame::MainFrame(const wxString& title) : wxFrame(nullptr, wxID_ANY, title) 
 
 	SetIcon(wxIcon(wxT("icon.ico"), wxBITMAP_TYPE_ICO));
 
-	// TODO allows to use cout to output to console
-	AllocConsole();
-	freopen("CONOUT$", "w", stdout);
-	freopen("CONOUT$", "w", stderr);
-
 	wxFont calibriFont(10, wxFONTFAMILY_SWISS, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL, false, wxT("Arial"));
 	this->SetFont(calibriFont);
 
@@ -324,7 +319,6 @@ int MainFrame::manage_frames() {
 	else {
 		set_mute(false);
 	}
-	std::cout << "Next event in " << result.second << " seconds. (" << result.second / 60 << " minutes)" << std::endl;
 
 	return result.second;
 }

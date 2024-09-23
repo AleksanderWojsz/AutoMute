@@ -15,3 +15,10 @@
 Screenshot: 
 
 ![app screenshot](automute.png)
+
+---
+
+TODO:
+
+- [ ] Allow only one running copy of the program at a time
+- [ ] Automatically mute the sound before shutting down the computer and possibly unmute it after startup (so that there is never any sound before the program starts)

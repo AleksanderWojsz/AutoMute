@@ -485,8 +485,7 @@ std::vector<MuteFrame> read_frames() {
 
 	if (inFile.is_open()) {
 		MuteFrame frame;
-		while (inFile >> frame.id
-			>> frame.start_year >> frame.start_month >> frame.start_day
+		while (inFile >> frame.start_year >> frame.start_month >> frame.start_day
 			>> frame.start_hour >> frame.start_minute
 			>> frame.end_year >> frame.end_month >> frame.end_day
 			>> frame.end_hour >> frame.end_minute
@@ -516,8 +515,7 @@ void save_mute_frames(std::vector<MuteFrame> frames, bool append) {
 	if (outFile.is_open()) {
 
 		for (MuteFrame frame : frames) {
-			outFile << frame.id << " "
-				<< frame.start_year << " "
+			outFile	<< frame.start_year << " "
 				<< frame.start_month << " "
 				<< frame.start_day << " "
 				<< frame.start_hour << " "
@@ -552,7 +550,7 @@ void MainFrame::OnMenuEvent(wxCommandEvent& event) {
 
 
 MuteFrame::MuteFrame()
-	: id(0), start_year(0), start_month(0), start_day(0), start_hour(0), start_minute(0), end_year(0), end_month(0), end_day(0), end_hour(0), end_minute(0), repeat_every_week(false) {
+	: start_year(0), start_month(0), start_day(0), start_hour(0), start_minute(0), end_year(0), end_month(0), end_day(0), end_hour(0), end_minute(0), repeat_every_week(false) {
 }
 
 MuteFrame::MuteFrame(int start_year, int start_month, int start_day, int start_hour, int start_minute, int end_year, int end_month, int end_day, int end_hour, int end_minute, bool repeat_every_week)

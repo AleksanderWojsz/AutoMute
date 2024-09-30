@@ -8,7 +8,7 @@
 
 ---
  
-[**Download installer**](https://github.com/AleksanderWojsz/AutoMute/releases/download/v1.0.0/AutoMuteInstaller.msi)
+[**Download installer**](https://github.com/AleksanderWojsz/AutoMute/releases/download/v1.0.1/AutoMuteInstaller.msi)
 
 ---
 

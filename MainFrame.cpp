@@ -63,7 +63,7 @@ std::pair<int, int> get_current_hour_and_minutes() {
 	return std::make_pair(now->tm_hour, now->tm_min);
 }
 
-// [day, month, year]
+// changes (1.2.3) to [1, 2, 3]
 std::vector<int> parse_date(std::string date_string) {
 	std::vector<int> date_parts;
 	std::size_t start = date_string.find('(') + 1;
@@ -208,17 +208,17 @@ void MainFrame::autostart_button_clicked(wxCommandEvent& event) {
 void MainFrame::OnAddButtonClicked(wxCommandEvent& event) {
 	std::vector<std::string> upcoming_days_with_dates = get_next_week_days_with_dates();
 
-	std::vector<int> start_date = parse_date(upcoming_days_with_dates[start_day->GetSelection()]);
-	std::vector<int> end_date = parse_date(upcoming_days_with_dates[end_day->GetSelection()]);
+	int selected_index_start = start_day->GetSelection();
+	int selected_index_end = end_day->GetSelection();
 
 	int start_hour_value = start_hour->GetValue();
 	int start_minute_value = start_minute->GetValue();
 	int end_hour_value = end_hour->GetValue();
 	int end_minute_value = end_minute->GetValue();
 
-	if (end_date < start_date ||
-		(start_date == end_date && end_hour_value < start_hour_value) ||
-		(start_date == end_date && start_hour_value == end_hour_value && end_minute_value <= start_minute_value)) {
+	if (selected_index_end < selected_index_start ||
+		(selected_index_start == selected_index_end && end_hour_value < start_hour_value) ||
+		(selected_index_start == selected_index_end && start_hour_value == end_hour_value && end_minute_value <= start_minute_value)) {
 
 		wxLogStatus("End date <= start date");
 		return;
@@ -226,6 +226,9 @@ void MainFrame::OnAddButtonClicked(wxCommandEvent& event) {
 	else {
 		wxLogStatus("");
 	}
+
+	std::vector<int> start_date = parse_date(upcoming_days_with_dates[selected_index_start]);
+	std::vector<int> end_date = parse_date(upcoming_days_with_dates[selected_index_end]);
 
 	MuteFrame new_frame(
 		start_date[2],
